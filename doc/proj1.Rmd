@@ -1,0 +1,270 @@
+---
+title: "Project 1"
+author: "Yujie Wang"
+date: "02/06/2019"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(tm)
+library(tidytext)
+library(tidyverse)
+library(DT)
+library(scales)
+library(wordcloud)
+library(wordcloud2)
+library(gridExtra)
+library(ngram)
+library(shiny)
+library(rvest)
+library(tibble)
+library(qdap)
+library(sentimentr)
+library(gplots)
+library(dplyr)
+library(syuzhet)
+library(factoextra)
+library(beeswarm)
+library(RColorBrewer)
+library(RANN)
+library(topicmodels)
+library(ggthemes)
+library(widyr)
+library(ggraph)
+library(igraph)
+setwd("/Users/yujiewang/Documents/GitHub/Spring2019-Proj1-kwkwtkw/data")
+```
+
+
+#Data Analysis on Happy Moments Brought by Entertainments
+##Introduction
+People's lives, in addition to busy work and study, also require entertainment. Entertainment brings us relaxation and happiness. HappyDB is a corpus of more than 100,000 responses where workers in Amazon Mechanical Turk share their happy moments. The theme of this project is to use statistical and natural language processing methods to study the happy moments that entertainment brings to people.
+
+Questions studied: 
+
+1. What are highly mentioned entertainments that bring people happiness?
+
+2. What is the difference between happiness brought by entertainment and happiness brought by other things? 
+
+3. What is the difference between the positive emotions associated with different entertainments?
+
+4. How to cluster happy moments brought by entertainment?
+
+![](/Users/yujiewang/Documents/GitHub/Spring2019-Proj1-kwkwtkw/figs/entertainment-icon-11.jpg)
+
+##Part 1: Data Processing
+split the original data hm_data into two parts: happy moments related to entertainment or not
+```{r}
+hm_data = read.csv("../output/processed_moments.csv", as.is = TRUE)
+entertain <- read.csv( "/Users/yujiewang/Documents/GitHub/Spring2019-Proj1-kwkwtkw/data/entertainment-dict.csv", header = FALSE, col.names = "entertainment")
+#bag of words:split each words from the text
+hm_unnest <- unnest_tokens(tbl = hm_data, output = textsplit, input = text) 
+#match words with entertainments
+hm_unnest$match_id <- match(hm_unnest$textsplit, entertain$entertainment)
+
+entertain_index_unnest = !is.na(hm_unnest$match_id) #mathced indices for unnested df 
+entertain_index <- hm_unnest[entertain_index_unnest, "id",drop = TRUE] #mathced indices for original df 
+
+
+#get the subset of data which containing entertainment in happy moment description
+entertain_data <- unique(hm_data[entertain_index,])
+#get the subset of data which not containing entertainment in happy moment description
+other_data <- hm_data[-entertain_index,]
+
+#add a column to show what type of entertainment is matched
+entertain$match_id <- 1:nrow(entertain)
+  ##hmid with entertainment description
+entertain_hmid = na.omit(hm_unnest[,c("hmid","match_id")])$hmid
+entertain_matched = na.omit(hm_unnest[,c("hmid","match_id")]) %>% 
+          inner_join(entertain, "match_id") %>%
+          inner_join(entertain_data, "hmid")
+
+#show a part of the matched table
+entertain_matched[c(1,2,5,6,9),c("hmid", "text", "entertainment")]
+#write_csv(entertain_matched,"../output/entertain_matched.csv")
+
+#modify hm_data by adding a indicator column group
+hm_data = hm_data %>% mutate(group = ifelse(hmid %in% entertain_hmid, "entertainment", "non_entertainment"))
+
+#show a part of the table
+hm_data[c(1,3,6,11,31),c("hmid", "text", "group")]
+#write_csv(hm_data,"../output/hm_data_grouped.csv")
+```
+
+##Part2 What are Highly Mentioned Types of Entertainments that Bring People Happiness?
+###2.1 Using word cloud to visualize entertainments appearing most frequently
+```{r}
+#word cloud for highly mentioned types of entertainment
+entertainment_count <- hm_unnest[entertain_index_unnest,] %>% count(textsplit)
+wordcloud2(entertainment_count)
+```
+The word cloud shows that among all entertainments, watching movie, reading book, playing video game and listening to the music are most popular.
+
+###2.2 Using word cloud to visualize the most frequent words related to entertainment
+```{r}
+#word cloud for highly related words to entertainment
+entertain_unnest <- hm_unnest %>% filter(hmid %in% entertain_hmid)
+entertain_unnest_drop <- entertain_unnest[is.na(entertain_unnest$match_id),]
+otherword_count <- entertain_unnest_drop %>% count(textsplit, sort = T)
+wordcloud2(otherword_count[1:200,])
+```
+
+![](/Users/yujiewang/Desktop/Screen Shot 2019-02-05 at 10.59.17 PM.png)
+It shows that the top motions in people's entertainment moment are watching and playing, and people like to enjoy entertainments with friends and family.
+
+## Part 3 What is the Difference Between Happiness brought by Entertainment and Happiness Caused by other things?
+
+There are many ways in which people gain happiness, and happiness can be divided into many categories. Let's look at some examples: "I am happy because I don't have to work today"; "I got a good score." These two examples are both happy moments, but happiness in these two scenarios is not the same. The first happy moment is caused by leisure, while the latter one is the satisfaction brought by the sense of accomplishment. Therefore, I divided the happiness into 7 categories (hm_data$predicted_category) to analyze the difference between happiness brought by entertainment and happiness caused by other things.
+```{r}
+#Calculate the proportion of each happines category by group
+group_count = hm_data %>% group_by(group) %>% summarise(count = n())
+category_proportion <- hm_data %>% group_by(group, predicted_category) %>% summarise(count = n()) %>% mutate(proportion = ifelse(group == "entertainment", count/group_count[1,2, drop = T], count/group_count[2,2, drop = T])) %>% mutate(proportion = percent(proportion))
+category_proportion
+
+
+p1 <- hm_data %>% ggplot(aes(x = group, fill = predicted_category)) + 
+  geom_bar(position = "dodge") +
+  ggtitle("Count of Happiness Category")+
+  theme_solarized() 
+
+p2 <- category_proportion %>% ggplot(aes(x = group, y = count, fill = predicted_category))+ geom_bar(stat="identity",na.rm=TRUE, position = "fill")+
+  theme_solarized() + 
+  ylab("") +
+  xlab("")+
+  theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+
+  coord_polar("y", start=0,direction = 1) +
+  ggtitle("outer pie: non_entertainment group; inner pie: entertainment group") +
+  theme(plot.title = element_text(size=10))
+  
+p1
+```
+
+The bar chart points out that there are few entertainments causing happiness in exercise and nature categories. If you spend much of your spare time engaging entertainment, you may face health problem. You may need to do more exercise and get in touch with nature.
+```{r}
+p2
+```
+
+The bar chart points out that there are few entertainments causing happiness in exercise and nature categories. If you spend much of your spare time engaging entertainment, you may face health problem. You may need to do more exercise and get in touch with nature. The pie chart decomposes the happiness in entertainment, illustrating that while entertainment brings more leisure as compared with things from the non_entertainment group, it brings less achievement and affection.
+
+##Part4 What is the difference between the positive emotions associated with different entertainments?
++ sentiment analysis using  [NRC sentiment lexion](http://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm). "The NRC Emotion Lexicon is a list of English words and their associations with eight basic emotions (anger, fear, anticipation, trust, surprise, sadness, joy, and disgust) and two sentiments (negative and positive). The annotations were manually done by crowdsourcing."
+
+Can different types of entertainment bring the same emotion? Let's do a sentimental analysis. **get_nrc_sentiment** function assigned the appearance of the 8 emotions for each happy moment, and I weighted each result by the length of the corresponding description text. After getting the subset positive emotions and frequent entertainments, I used boxplots to show the distribution of emotion component proportion in happy moment description text by 4 positive emotions and 8 frequent entertainments.
+```{r}
+# count of associated emotions for each happy moment
+emotions = get_nrc_sentiment(entertain_matched$text)
+word.count=word_count(entertain_matched$text)
+# weighted by happy moment description text length
+emotions = diag(1/(word.count))%*%as.matrix(emotions)
+
+# add a column showing the composition of 8 emotions in each happy moments
+emotion_gather = as.data.frame(cbind(hmid = entertain_matched$hmid, emotions)) %>% gather("emotion", "value" ,-hmid)
+entertain_emotion <- emotion_gather[emotion_gather$value != 0, ] %>%          inner_join(entertain_matched, "hmid") 
+
+# get the subset for positive emotions and frequent entertainments 
+   #entertainments appear in high frequency 
+top.entertain <- c("movie","song",'music','read','video','tv',"concert","read","episode")
+    #select the positive emotions
+positive.emotion <- c("anticipation", "joy", "surprise", "trust")
+entertain_emotion_sub <- entertain_emotion %>%
+  filter(emotion %in% positive.emotion) %>% 
+  filter(entertainment %in% top.entertain) 
+
+#boxplot: what kind of happiness each kinds of entertainment bring
+entertain_emotion_sub %>% ggplot(aes(x = entertainment, y = value)) +
+  geom_boxplot() + 
+  facet_wrap(~emotion)  +
+  ylab("emotion component proportion in happy moment description text") +
+  ggtitle("Emotion Component Proportion by Entertainments")+
+  theme_solarized() 
+
+```
+
+The boxplot demonstrates that attending a concert, on average, brings people anticipation emotion than other entertainments. In comparison, music leads to more joyful moments; watching tv series(episodes) and movies give people more surprise. 
+
+```{r, eval=F, include=F}
+hm_corpus <- VCorpus(VectorSource(entertain_matched$text))
+dtm <- DocumentTermMatrix(hm_corpus)
+                        
+tdm.w <- TermDocumentMatrix(hm_corpus, control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE)))
+
+dtm2 <- removeSparseTerms(dtm, 0.999)
+rowTotals = apply(dtm2, 1, sum)
+dtm2 = dtm2[rowTotals> 0, ]
+#Set parameters for Gibbs sampling
+burnin <- 4000
+iter <- 2000
+thin <- 500
+seed <-list(2003,5,63,100001,765)
+nstart <- 5
+best <- TRUE
+
+#Number of topics
+k <- 2
+#Run LDA using Gibbs sampling
+lda <-LDA(dtm2, k, method="Gibbs", control=list(nstart=nstart, 
+                                                 seed = seed, best=best,
+                                                 burnin = burnin, iter = iter, 
+                                                 thin=thin))
+
+terms(lda, 15)
+# extracting the per-topic-per-word probability "beta"
+topic_word_prob <- tidy(lda, matrix = "beta")
+
+topic_word_prob %>% 
+  group_by(topic) %>% 
+  top_n(10, beta) %>%
+  ungroup %>%
+  arrange(topic, beta) %>%
+  mutate(term = reorder(term, -beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_bar(stat="identity") +
+  facet_wrap(~topic, scales = "free") +
+  theme_solarized() 
+
+```
+
+##Part5 How to cluster happy moments brought by entertainment?
+###5.1 Network Clustering
+I counted the number of co-occurrence between 2 words and drew link lines for co-occurrence greater than 70.
+```{r}
+#count the number of co-occurrence
+co_occurrence <- entertain_unnest %>% pairwise_count(textsplit, id) %>% filter(n >= 70) 
+head(co_occurrence)
+#plot nextwork graph
+co_occurrence %>%
+graph_from_data_frame() %>%
+ggraph(layout = "fr") + #Fruchterman Reingold: a stochastic layout
+geom_edge_link(aes(edge_alpha = n, edge_width = n), edge_colour = "blue") +
+geom_node_point(size = 3) +
+geom_node_text(aes(label = name), repel = TRUE,
+point.padding = unit(0.2, "lines")) +
+ggtitle("Network Plot")+
+theme_solarized() 
+
+```
+
+The network plot shows the cluster of words in happy moment description texts. We observe that "read, book, finished", "video, game, friend" are highly correlated words. We can guess that people feel happy when they finish a book reading and play video game with friends.
+
+###5.2 Hierarchical Clustering
+[Hierarchical clustering](https://en.wikipedia.org/wiki/Hierarchical_clustering) is a method of cluster analysis which seeks to build a hierarchy of clusters.
+```{r, warning = F}
+hm_corpus <- VCorpus(VectorSource(entertain_matched$text))
+tdm <- removeSparseTerms(TermDocumentMatrix(hm_corpus), 0.95)
+cluster <- hclust(d = dist(tdm, method = "euclidean"), method = "complete")
+plclust(cluster) + title("Dendrogram")  
+```
+
+The result shows that "wathced, friend, movie", "listeining, night", "enjoyed, band, youtube", "played, game, video" are clustered. We imagine that in their happy moment, people usually watch movie with friends, listening something at night, enjoy the music of a band on youtube, and play video game.
+
+##Part6 Conclusion
+
+After counting the appearance of entertainments in happy moment text, I found that highly mentioned entertainments that bring people happiness are watching movie, reading book, playing video game and listening to the music. When category of happiness is analyzed, entertainment is barely connected with exercise and nature, and happiness brought by entertainment are mainly leisure. Different types of entertainments bring people differenct emotions. For example, attending a concert, on average, brings people anticipation emotion than other entertainments. In comparison, music leads to more joyful moments; watching tv series and movie gives people more surprise. We can classify happy moments in clusters; the network plot and dendrogram for hierarchical clustering shows word connections in people happy moment text.

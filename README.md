@@ -9,10 +9,10 @@ This is the first and only *individual* (as opposed to *team*) this semester.
 
 Term: Spring 2019
 
-+ Projec title: Lorem ipsum dolor sit amet
-+ This project is conducted by [your name]
++ Projec title: Data Analysis on Happy Moments Brought by Entertainments
++ This project is conducted by Yujie Wang
 
-+ Project summary: [a short summary] Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
++ Project summary:  Entertainment brings us relaxation and happiness. HappyDB is a corpus of more than 100,000 responses where workers in Amazon Mechanical Turk share their happy moments. The theme of this project is to use statistical and natural language processing methods to study the happy moments that entertainment brings to people. After counting the appearance of entertainments in happy moment text, I found that highly mentioned entertainments that bring people happiness are watching movie, reading book, playing video game and listening to the music. When category of happiness is analyzed, entertainment is barely connected with exercise and nature, and happiness brought by entertainment are mainly leisure. Different types of entertainments bring people differenct emotions. For example, attending a concert, on average, brings people anticipation emotion than other entertainments. In comparison, music leads to more joyful moments; watching tv series and movie gives people more surprise. We can classify happy moments in clusters; the network plot and dendrogram for hierarchical clustering shows word connections in people happy moment text.
 
 Following [suggestions](http://nicercode.github.io/blog/2013-04-05-projects/) by [RICH FITZJOHN](http://nicercode.github.io/about/#Team) (@richfitz). This folder is orgarnized as follows.
 
